@@ -9,41 +9,55 @@ namespace RationalRomance_Code;
     nameof(ThoughtWorker_WantToSleepWithSpouseOrLover.CurrentStateInternal))]
 public static class ThoughtWorker_WantToSleepWithSpouseOrLover_CurrentStateInternal
 {
-    // CHANGE: Allowed for polyamory.
     public static void Postfix(ref ThoughtState __result, Pawn p)
     {
         if (__result.StageIndex == ThoughtState.Inactive.StageIndex)
         {
             return;
         }
+        
+        //FIXED: Check if they have Polyamorous first since the rest doesn't matter if they don't
+        if (!HasPolyamorousTrait(p))
+        {
+            return;
+        }
 
         var directPawnRelation = LovePartnerRelationUtility.ExistingMostLikedLovePartnerRel(p, false);
+        
         var multiplePartners =
-            (from r in p.relations.PotentiallyRelatedPawns
+            (
+                from r in p.relations.PotentiallyRelatedPawns
                 where LovePartnerRelationUtility.LovePartnerRelationExists(p, r)
-                select r).Count() > 1;
+                select r
+            ).Count() > 1;
 
-        if (directPawnRelation == null || p.ownership.OwnedBed.GetRoom() == null)
+        // FIXED: Check for null bed BEFORE calling GetRoom() on it
+        if (directPawnRelation == null || p.ownership?.OwnedBed == null)
         {
             return;
         }
 
-        if (p.ownership.OwnedBed == null)
+        var room = p.ownership.OwnedBed.GetRoom();
+        if (room == null)
         {
             return;
         }
 
-        var partnerBedInRoom = (from t in p.ownership.OwnedBed.GetRoom()?.ContainedBeds
-            where t.OwnersForReading.Contains(directPawnRelation.otherPawn)
-            select t).Any();
+        var partnerBedInRoom = (
+            from t in room.ContainedBeds
+            where
+                t?.OwnersForReading != null
+                && t.OwnersForReading.Contains(directPawnRelation.otherPawn)
+            select t
+        ).Any();
 
-        if (hasPolyamorousTrait(p) && multiplePartners && partnerBedInRoom)
+        if (multiplePartners && partnerBedInRoom)
         {
-            __result = false;
+            __result = ThoughtState.Inactive;
         }
     }
 
-    private static bool hasPolyamorousTrait(Pawn pawn)
+    private static bool HasPolyamorousTrait(Pawn pawn)
     {
         return pawn.story?.traits?.HasTrait(RRRTraitDefOf.Polyamorous) ?? false;
     }
